@@ -1,2 +1,0 @@
-# Capstone
-Language Fluency model
