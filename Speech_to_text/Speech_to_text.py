@@ -3,6 +3,7 @@ import numpy as np
 import scipy.io.wavfile as wav
 import webrtcvad
 import time
+import signal
 
 # Load the Whisper model (CPU-only)
 from faster_whisper import WhisperModel
@@ -11,11 +12,10 @@ model = WhisperModel("base", device="cpu")
 # Function to record audio with improved Voice Activity Detection (VAD)
 def record_with_improved_vad(filename):
     sample_rate = 16000
-    frame_duration = 30  # Duration of each VAD frame in milliseconds
     vad = webrtcvad.Vad()
     vad.set_mode(3)  # Aggressiveness mode: 0 (least aggressive) to 3 (most aggressive)
 
-    print("Recording...")
+    print("Recording... Press Ctrl+C to stop recording.")
 
     # Parameters for buffering audio
     buffer_size = int(0.02 * sample_rate)  # 20 ms buffer size
@@ -40,17 +40,22 @@ def record_with_improved_vad(filename):
     stream = sd.InputStream(channels=1, samplerate=sample_rate, dtype=np.int16)
 
     with stream:
-        while True:
-            recording, _ = stream.read(buffer_size)
-            is_speech = vad.is_speech(recording.tobytes(), sample_rate)
+        try:
+            while True:
+                recording, _ = stream.read(buffer_size)
+                is_speech = vad.is_speech(recording.tobytes(), sample_rate)
 
-            if is_speech:
-                start_time = time.time()  # Reset start time if speech detected
-                buffer.append(recording.copy())
-            else:
-                # Check if 4 seconds have elapsed since the last speech detected
-                if time.time() - start_time > 4:
-                    break
+                if is_speech:
+                    start_time = time.time()  # Reset start time if speech detected
+                    buffer.append(recording.copy())
+                else:
+                    # Check if 4 seconds have elapsed since the last speech detected
+                    if time.time() - start_time > 5:
+                        break
+
+        except KeyboardInterrupt:
+            print("\nRecording stopped by user.")
+            pass
 
     # Process any remaining data in buffer
     process_buffer(buffer)
