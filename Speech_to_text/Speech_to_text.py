@@ -5,11 +5,25 @@ import webrtcvad
 import time
 import signal
 import sys
-
 from faster_whisper import WhisperModel
 
 # Load the Whisper model (CPU-only)
 model = WhisperModel("base", device="cpu", compute_type="float32")
+
+def high_pass_filter_int16(data, cutoff_frequency, sample_rate):
+    # Calculate the filter coefficient (RC time constant)
+    rc = 1.0 / (cutoff_frequency * 2.1 * np.pi)
+    dt = 1.0 / sample_rate
+    alpha = dt / (rc + dt)
+
+    # Apply the high-pass filter
+    filtered_data = np.zeros_like(data)
+    filtered_data[0] = data[0]
+    
+    for i in range(1, len(data)):
+        filtered_data[i] = alpha * (filtered_data[i - 1] + data[i] - data[i - 1])
+    
+    return filtered_data
 
 def record_with_improved_vad(filename):
     sample_rate = 16000
@@ -43,6 +57,10 @@ def record_with_improved_vad(filename):
         process_buffer(buffer)  # Process remaining data in buffer
         wav.write(filename, sample_rate, np.array(audio, dtype=np.int16))
         print(f"Audio saved to {filename}")
+        
+        # Call transcription function after recording stops
+        transcribe_audio(filename)
+        
         sys.exit(0)
 
     # Register signal handler for graceful exit
@@ -54,7 +72,10 @@ def record_with_improved_vad(filename):
         try:
             while True:
                 recording, _ = stream.read(buffer_size)
-                is_speech = vad.is_speech(recording.tobytes(), sample_rate)
+                
+                # Apply high-pass filter to int16 data
+                filtered_recording = high_pass_filter_int16(recording.flatten(), 1000, sample_rate)
+                is_speech = vad.is_speech(filtered_recording.tobytes(), sample_rate)
 
                 if is_speech:
                     start_time = time.time()  # Reset start time if speech detected
@@ -73,6 +94,9 @@ def record_with_improved_vad(filename):
     print("Recording finished")
     wav.write(filename, sample_rate, np.array(audio, dtype=np.int16))
     print(f"Audio saved to {filename}")
+
+    # Call transcription function after recording ends
+    transcribe_audio(filename)
 
 def transcribe_audio(filename, output_file="output.txt"):
     print(f"Transcribing {filename}...")
@@ -96,7 +120,6 @@ def real_time_transcription():
     try:
         filename = "real_time_audio.wav"
         record_with_improved_vad(filename)
-        transcribe_audio(filename)
     except KeyboardInterrupt:
         print("Real-time transcription stopped")
 
