@@ -12,7 +12,7 @@ model = WhisperModel("base", device="cpu", compute_type="float32")
 
 def high_pass_filter_int16(data, cutoff_frequency, sample_rate):
     # Calculate the filter coefficient (RC time constant)
-    rc = 1.0 / (cutoff_frequency * 2.1 * np.pi)
+    rc = 1.0 / (cutoff_frequency * 2 * np.pi)
     dt = 1.0 / sample_rate
     alpha = dt / (rc + dt)
 
