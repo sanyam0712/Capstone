@@ -4,12 +4,13 @@ import scipy.io.wavfile as wav
 import webrtcvad
 import time
 import signal
+import sys
+
+from faster_whisper import WhisperModel
 
 # Load the Whisper model (CPU-only)
-from faster_whisper import WhisperModel
-model = WhisperModel("base", device="cpu")
+model = WhisperModel("base", device="cpu", compute_type="float32")
 
-# Function to record audio with improved Voice Activity Detection (VAD)
 def record_with_improved_vad(filename):
     sample_rate = 16000
     vad = webrtcvad.Vad()
@@ -37,6 +38,16 @@ def record_with_improved_vad(filename):
             
             buffer.clear()
 
+    def signal_handler(sig, frame):
+        print("\nRecording stopped by user.")
+        process_buffer(buffer)  # Process remaining data in buffer
+        wav.write(filename, sample_rate, np.array(audio, dtype=np.int16))
+        print(f"Audio saved to {filename}")
+        sys.exit(0)
+
+    # Register signal handler for graceful exit
+    signal.signal(signal.SIGINT, signal_handler)
+
     stream = sd.InputStream(channels=1, samplerate=sample_rate, dtype=np.int16)
 
     with stream:
@@ -50,12 +61,11 @@ def record_with_improved_vad(filename):
                     buffer.append(recording.copy())
                 else:
                     # Check if 4 seconds have elapsed since the last speech detected
-                    if time.time() - start_time > 5:
+                    if time.time() - start_time > 4:
                         break
 
-        except KeyboardInterrupt:
-            print("\nRecording stopped by user.")
-            pass
+        except Exception as e:
+            print(f"An error occurred: {e}")
 
     # Process any remaining data in buffer
     process_buffer(buffer)
@@ -64,7 +74,6 @@ def record_with_improved_vad(filename):
     wav.write(filename, sample_rate, np.array(audio, dtype=np.int16))
     print(f"Audio saved to {filename}")
 
-# Function to transcribe audio and export the text to a file
 def transcribe_audio(filename, output_file="output.txt"):
     print(f"Transcribing {filename}...")
     segments, _ = model.transcribe(filename)
@@ -83,7 +92,6 @@ def transcribe_audio(filename, output_file="output.txt"):
 
     print(f"Transcriptions exported to {output_file}")
 
-# Main function to perform real-time transcription with improved VAD
 def real_time_transcription():
     try:
         filename = "real_time_audio.wav"
